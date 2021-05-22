@@ -1,0 +1,23 @@
+services:
+  web:
+    build: .
+    command: python -m app.app
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    links:
+      - mongo
+      - redis
+  job:
+    build: .
+    command: python -m app.jobs.execute_tasks
+    volumes:
+      - .:/app
+    links:
+      - mongo
+      - redis
+  mongo:
+    image: mongo:4.0.8
+  redis:
+    image: redis:alpine
