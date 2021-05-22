@@ -10,29 +10,13 @@ and that no claims can be made against the developers,
 or others connected with the program.
 """
 
-# use for environment variables
-import os
-
-# use if needed to pass args to external modules
-import sys
-
 # used to create threads & dynamic loading of modules
 import threading
 import importlib
 
-# used for directory handling
-import glob
-
 # Needed for colorful console output Install with: python3 -m pip install colorama (Mac/Linux) or pip install colorama (PC)
 from colorama import init
 init()
-
-# needed for the binance API / websockets / Exception handling
-from binance.client import Client
-from binance.exceptions import BinanceAPIException
-
-# used for dates
-from datetime import date, datetime, timedelta
 import time
 
 # used to repeatedly execute the code
@@ -44,11 +28,6 @@ import json
 # Load helper modules
 from helpers.parameters import (
     parse_args, load_config
-)
-
-# Load creds modules
-from helpers.handle_creds import (
-    load_correct_creds, test_api_key
 )
 
 from app.services import binance as binance_service
@@ -64,7 +43,7 @@ class txcolors:
     DEFAULT = '\033[39m'
 
 
-if __name__ == '__main__':
+def run():
     # Load arguments then parse settings
     args = parse_args()
     mymodule = {}
@@ -76,73 +55,12 @@ if __name__ == '__main__':
     parsed_config = load_config(config_file)
     parsed_creds = load_config(creds_file)
 
-    # Default no debugging
-    DEBUG = False
-
-    # Load system vars
     TEST_MODE = parsed_config['script_options']['TEST_MODE']
-    LOG_TRADES = parsed_config['script_options'].get('LOG_TRADES')
-    LOG_FILE = parsed_config['script_options'].get('LOG_FILE')
-    DEBUG_SETTING = parsed_config['script_options'].get('DEBUG')
-
-    # Load trading vars
-    PAIR_WITH = parsed_config['trading_options']['PAIR_WITH']
-    QUANTITY = parsed_config['trading_options']['QUANTITY']
-    MAX_COINS = parsed_config['trading_options']['MAX_COINS']
-    FIATS = parsed_config['trading_options']['FIATS']
-    TIME_DIFFERENCE = parsed_config['trading_options']['TIME_DIFFERENCE']
-    RECHECK_INTERVAL = parsed_config['trading_options']['RECHECK_INTERVAL']
-    CHANGE_IN_PRICE = parsed_config['trading_options']['CHANGE_IN_PRICE']
-    STOP_LOSS = parsed_config['trading_options']['STOP_LOSS']
-    TAKE_PROFIT = parsed_config['trading_options']['TAKE_PROFIT']
-    CUSTOM_LIST = parsed_config['trading_options']['CUSTOM_LIST']
-    USE_TRAILING_STOP_LOSS = parsed_config['trading_options']['USE_TRAILING_STOP_LOSS']
-    TRAILING_STOP_LOSS = parsed_config['trading_options']['TRAILING_STOP_LOSS']
-    TRAILING_TAKE_PROFIT = parsed_config['trading_options']['TRAILING_TAKE_PROFIT']
     SIGNALLING_MODULES = parsed_config['trading_options']['SIGNALLING_MODULES']
-    if DEBUG_SETTING or args.debug:
-        DEBUG = True
 
-    # Load creds for correct environment
-    access_key, secret_key = load_correct_creds(parsed_creds)
+    print(f'loaded config below\n{json.dumps(parsed_config, indent=4)}')
+    print(f'Your credentials have been loaded from {creds_file}')
 
-    if DEBUG:
-        print(f'loaded config below\n{json.dumps(parsed_config, indent=4)}')
-        print(f'Your credentials have been loaded from {creds_file}')
-
-
-    # Authenticate with the client, Ensure API key is good before continuing
-    client = Client(access_key, secret_key)
-    api_ready, msg = test_api_key(client, BinanceAPIException)
-    if api_ready is not True:
-        exit(f'{txcolors.SELL_LOSS}{msg}{txcolors.DEFAULT}')
-
-    # Use CUSTOM_LIST symbols if CUSTOM_LIST is set to True
-    if CUSTOM_LIST: tickers=[line.strip() for line in open('tickers.txt')]
-
-    # try to load all the coins bought by the bot if the file exists and is not empty
-    coins_bought = {}
-
-    # path to the saved coins_bought file
-    coins_bought_file_path = 'coins_bought.json'
-
-    # rolling window of prices; cyclical queue
-    historical_prices = [None] * (TIME_DIFFERENCE * RECHECK_INTERVAL)
-    hsp_head = -1
-
-    # prevent including a coin in volatile_coins if it has already appeared there less than TIME_DIFFERENCE minutes ago
-    volatility_cooloff = {}
-
-    # use separate files for testing and live trading
-    if TEST_MODE:
-        coins_bought_file_path = 'test_' + coins_bought_file_path
-
-    # if saved coins_bought json file exists and it's not empty then load it
-    if os.path.isfile(coins_bought_file_path) and os.stat(coins_bought_file_path).st_size!= 0:
-        with open(coins_bought_file_path) as file:
-                coins_bought = json.load(file)
-
-    print('Press Ctrl-Q to stop the script')
 
     if not TEST_MODE:
         if not args.notimeout: # if notimeout skip this (fast for dev tests)
@@ -156,18 +74,23 @@ if __name__ == '__main__':
         t.start()
 
     # seed initial prices
-    binance_service.get_price()
+    binance_client = binance_service.BinanceClient(parsed_config, parsed_creds)
+    binance_client.get_price()
     should_sell = False
     while True:
         if redis_service.binance_detect_mooning_job_status():
-            orders, last_price, volume = binance_service.buy()
-            binance_service.update_portfolio(orders, last_price, volume)
-            coins_sold = binance_service.sell_coins()
-            binance_service.remove_from_portfolio(coins_sold)
+            orders, last_price, volume = binance_client.buy()
+            binance_client.update_portfolio(orders, last_price, volume)
+            coins_sold = binance_client.sell_coins()
+            binance_client.remove_from_portfolio(coins_sold)
             should_sell = True
         elif should_sell:
-            coins_sold = binance_service.panic_sell_coins()
-            binance_service.remove_from_portfolio(coins_sold)
+            coins_sold = binance_client.panic_sell_coins()
+            binance_client.remove_from_portfolio(coins_sold)
             should_sell = False
         else:
-            print('Daemon is stopped, use de start endpoint if you want to become rich')
+            print('Daemon is stopped, use the start endpoint if you want to become rich')
+
+
+if __name__ == '__main__':
+    run()

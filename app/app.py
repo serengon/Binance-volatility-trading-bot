@@ -3,8 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask
 
-from app.controllers.binance import bp_task
-from app.jobs.execute_tasks import run as run_execute_task
+from app.controllers.binance import bp_binance_detect_mooning_management
+from app.jobs.binance_detect_mooning import run as run_binance_detect_mooning
 from app.utils.environment import Environment
 from config import app_config
 
@@ -18,20 +18,21 @@ def create_app(env: Environment):
 
     app.url_map.strict_slashes = False
     active_endpoints = (
-        ("/", bp_task),
+        ("/", bp_binance_detect_mooning_management),
     )
 
     for url, blueprint in active_endpoints:
         app.register_blueprint(blueprint, url_prefix=url)
 
     if env == Environment.PRODUCTION:
-        run_jobs()
+        #run_jobs()
+        pass
 
     return app
 
 
 def run_jobs():
-    executor.submit(run_execute_task)
+    executor.submit(run_binance_detect_mooning)
     return 'Task executor job was launched in background!'
 
 

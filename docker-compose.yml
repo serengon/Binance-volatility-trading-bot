@@ -11,7 +11,7 @@ services:
       - redis
   job:
     build: .
-    command: python -m app.jobs.execute_tasks
+    command: python -m app.jobs.binance_detect_mooning
     volumes:
       - .:/app
     links:
